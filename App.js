@@ -318,13 +318,13 @@ function CartScreen({ cart, updateCartQty, removeFromCart, clearCart, cartTotal,
       cash_tendered: cash,
       change_amount: cash - cartTotal,
       cashier_id: currentUser?.id || '1',
-      customer_phone: '',
       items: cart.map(c => ({
         product_id: c.id,
         product_name: c.name,
         quantity: c.qty,
         unit_price: c.price,
-        total_price: c.price * c.qty
+        total_price: c.price * c.qty,
+        cost_price: c.cost_price || 0  // Include cost price
       }))
     };
     
@@ -427,7 +427,7 @@ function CartScreen({ cart, updateCartQty, removeFromCart, clearCart, cartTotal,
   };
 
   // Poll for payment status
-    const startPolling = (checkoutId) => {
+  const startPolling = (checkoutId) => {
     let elapsed = 0;
     const timer = setInterval(async () => {
       elapsed += 3;
@@ -436,7 +436,7 @@ function CartScreen({ cart, updateCartQty, removeFromCart, clearCart, cartTotal,
       const status = await mpesaService.checkStatus(checkoutId);
       console.log('[Cart] Poll status:', status.status, status.message);
       
-            if (status.status === 'Success') {
+        if (status.status === 'Success') {
         console.log('[Cart] Payment successful!');
         clearInterval(timer);
         setPollTimer(null);
@@ -782,24 +782,24 @@ function ReportsScreen({ setScreen }) {
     .reduce((sum, s) => sum + (s.total_amount || 0), 0);
   const avgSale = totalTransactions > 0 ? totalSales / totalTransactions : 0;
 
-  // Product breakdown from sales
+    // Product breakdown - use actual profit from server
   const productBreakdown = {};
   filteredSales.forEach(sale => {
-    // Handle both server format (items array) and local format
     const items = sale.items || [];
-    if (Array.isArray(items)) {
-      items.forEach(item => {
-        if (!item || !item.product_name) return;
-        const name = item.product_name || 'Unknown';
-        if (!productBreakdown[name]) {
-          productBreakdown[name] = { name, qty: 0, revenue: 0, cost: 0, profit: 0 };
-        }
-        productBreakdown[name].qty += (item.quantity || 0);
-        productBreakdown[name].revenue += (item.total_price || 0);
-        productBreakdown[name].cost += ((item.cost || 0) * (item.quantity || 0));
-        productBreakdown[name].profit += ((item.total_price || 0) - ((item.cost || 0) * (item.quantity || 0)));
-      });
-    }
+    items.forEach(item => {
+      if (!item) return;
+      const name = item.product_name || 'Unknown';
+      if (!productBreakdown[name]) {
+        productBreakdown[name] = { name, qty: 0, revenue: 0, cost: 0, profit: 0 };
+      }
+      productBreakdown[name].qty += (item.quantity || 0);
+      productBreakdown[name].revenue += (item.total_price || 0);
+      // Use actual cost and profit from server
+      const cost = (item.cost_price || 0) * (item.quantity || 0);
+      const profit = (item.profit || 0);
+      productBreakdown[name].cost += cost;
+      productBreakdown[name].profit += profit;
+    });
   });
   const productList = Object.values(productBreakdown).sort((a, b) => b.revenue - a.revenue);
   const totalCost = productList.reduce((sum, p) => sum + p.cost, 0);
