@@ -1,0 +1,17 @@
+node_modules/
+.expo/
+dist/
+android/
+ios/
+*.mp4
+*.mp3
+*.zip
+*.tar
+*.gz
+Desktop/
+Documents/
+Downloads/
+Music/
+Pictures/
+Videos/
+AI WOrkshop/
