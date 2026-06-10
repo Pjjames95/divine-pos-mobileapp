@@ -206,7 +206,7 @@ function LoginScreen({ onLogin }) {
       )}
       
       <TouchableOpacity style={styles.loginBtn} onPress={handleLogin}><Text style={styles.loginBtnText}>Sign In</Text></TouchableOpacity>
-      <Text style={styles.hint}>admin/admin123 or any credentials</Text>
+      <Text style={styles.hint}>Hello</Text>
     </View>
   );
 }
