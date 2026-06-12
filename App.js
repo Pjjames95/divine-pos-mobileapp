@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { mpesaService } from './src/services/mpesaService';
-
 import {
   View, Text, StyleSheet, TouchableOpacity, TextInput,
   ScrollView, Alert, SafeAreaView, StatusBar, Modal,
@@ -16,31 +15,26 @@ const COLORS = {
   textWhite: '#FFFFFF', border: '#F8BBD0',
 };
 
-const CATEGORIES = ['All','Makeup','Skincare','Hair Care','Nails','Fragrances','Bath & Body','Tools'];
-
-
+const CATEGORIES = ['All','Makeup','Skincare','Hair Care','Earings & Accessories',
+  'Manicure & Pedicure','Fragrances','Bath & Body','Lip Therapy','Barber','Tools'];
 
 export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [cart, setCart] = useState([]);
-  const [products, setProducts] = useState([]);  // Start empty, load from server
+  const [products, setProducts] = useState([]);
   const [screen, setScreen] = useState('shop');
   const [salesHistory, setSalesHistory] = useState([]);
   const [serverConnected, setServerConnected] = useState(false);
 
-
-  //load products from server
   const loadProductsFromServer = async () => {
     try {
       const response = await fetch(`${API_URL}/api/products`, {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'GET', headers: { 'Content-Type': 'application/json' },
       });
       if (response.ok) {
         const data = await response.json();
         if (data && data.length > 0) {
-          // REPLACE all products with server data
           setProducts(data);
           setServerConnected(true);
           console.log(`✅ Loaded ${data.length} products from server`);
@@ -55,23 +49,20 @@ export default function App() {
     return null;
   };
 
-  // Load products on login and screen changes
   useEffect(() => {
-    if (isLoggedIn) {
-      loadProductsFromServer();
-    }
+    if (isLoggedIn) { loadProductsFromServer(); }
   }, [isLoggedIn, screen]);
 
-  // Cart functions
   const addToCart = (product) => {
     if (product.quantity <= 0) { Alert.alert('Out of Stock'); return; }
+    const price = product.retail_price || product.price || 0;
     setCart(prev => {
       const existing = prev.find(i => i.id === product.id);
       if (existing) {
         if (existing.qty >= product.quantity) { Alert.alert('Stock Limit'); return prev; }
         return prev.map(i => i.id === product.id ? {...i, qty: i.qty+1} : i);
       }
-      return [...prev, {...product, qty: 1}];
+      return [...prev, { ...product, price, retail_price: product.retail_price || product.price, wholesale_price: product.wholesale_price || 0, qty: 1 }];
     });
   };
 
@@ -87,30 +78,26 @@ export default function App() {
 
   const removeFromCart = (id) => setCart(prev => prev.filter(i => i.id !== id));
   const clearCart = () => setCart([]);
-  const cartTotal = cart.reduce((t,i) => t + (i.price * i.qty), 0);
+  const cartTotal = cart.reduce((t, i) => t + ((i.retail_price || i.price) * i.qty), 0);
   const cartCount = cart.reduce((t,i) => t + i.qty, 0);
 
-  // Handle login
   const handleLogin = (userData) => {
     setCurrentUser({ ...userData, loginTime: Date.now() });
     setIsLoggedIn(true);
+    loadProductsFromServer();
   };
 
-  // Handle logout
   const handleLogout = () => {
-    setCurrentUser(null);
-    setIsLoggedIn(false);
-    setCart([]);
-    setScreen('login');
+    setCurrentUser(null); setIsLoggedIn(false);
+    setCart([]); setScreen('shop');
   };
 
-  if (!isLoggedIn) {
-    return <LoginScreen onLogin={handleLogin} />;
-  }
+  if (!isLoggedIn) { return <LoginScreen onLogin={handleLogin} />; }
 
   const quickActions = [
     { label: 'Reports', screen: 'reports', icon: '📊' },
     { label: 'Inventory', screen: 'inventory', icon: '📦' },
+    { label: 'Credits', screen: 'credits', icon: '📋' },
     { label: 'Settings', screen: 'settings', icon: '⚙️' },
   ];
   if (currentUser?.role === 'admin') quickActions.push({ label: 'Users', screen: 'users', icon: '👥' });
@@ -118,27 +105,11 @@ export default function App() {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" />
-      
-      {screen === 'shop' && (
-        <ShopScreen
-          products={products} cart={cart} addToCart={addToCart}
-          cartCount={cartCount} setScreen={setScreen} currentUser={currentUser}
-          loadProductsFromServer={loadProductsFromServer}
-          serverConnected={serverConnected}
-        />
-      )}
-      
-      {screen === 'cart' && (
-        <CartScreen
-          cart={cart} updateCartQty={updateCartQty} removeFromCart={removeFromCart}
-          clearCart={clearCart} cartTotal={cartTotal} cartCount={cartCount}
-          setScreen={setScreen} currentUser={currentUser} setProducts={setProducts}
-          setSalesHistory={setSalesHistory}
-        />
-      )}
-      
-      {screen === 'reports' && <ReportsScreen setScreen={setScreen} />}
+      {screen === 'shop' && <ShopScreen products={products} cart={cart} addToCart={addToCart} cartCount={cartCount} setScreen={setScreen} currentUser={currentUser} loadProductsFromServer={loadProductsFromServer} serverConnected={serverConnected} />}
+      {screen === 'cart' && <CartScreen cart={cart} updateCartQty={updateCartQty} removeFromCart={removeFromCart} clearCart={clearCart} cartTotal={cartTotal} cartCount={cartCount} setScreen={setScreen} currentUser={currentUser} setProducts={setProducts} setSalesHistory={setSalesHistory} />}
+      {screen === 'reports' && <ReportsScreen setScreen={setScreen} products={products} currentUser={currentUser} />}
       {screen === 'inventory' && <InventoryScreen products={products} setProducts={setProducts} setScreen={setScreen} currentUser={currentUser} loadProductsFromServer={loadProductsFromServer} />}
+      {screen === 'credits' && <CreditsScreen setScreen={setScreen} />}
       {screen === 'settings' && <SettingsScreen setScreen={setScreen} />}
       {screen === 'users' && <UsersScreen setScreen={setScreen} currentUser={currentUser} />}
       
@@ -146,7 +117,7 @@ export default function App() {
       <View style={styles.bottomNav}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.bottomNavScroll}>
           <TouchableOpacity style={styles.navBtn} onPress={() => setScreen('shop')}>
-            <Text style={styles.navText}>🏠 Shop</Text>
+            <Text style={styles.navText}>Home</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.navBtn} onPress={() => setScreen('cart')}>
             <Text style={styles.navText}>🛒 Cart ({cartCount})</Text>
@@ -162,7 +133,7 @@ export default function App() {
               { text: 'Logout', style: 'destructive', onPress: handleLogout }
             ]);
           }}>
-            <Text style={[styles.navText, {color: COLORS.error}]}>🚪 Logout</Text>
+            <Text style={[styles.navText, {color: COLORS.error}]}>Logout</Text>
           </TouchableOpacity>
         </ScrollView>
       </View>
@@ -266,7 +237,7 @@ function ShopScreen({ products, cart, addToCart, cartCount, setScreen, currentUs
           <TouchableOpacity style={styles.productCard} onPress={() => addToCart(item)}>
             <Text style={styles.productName} numberOfLines={2}>{item.name}</Text>
             <Text style={styles.productBrand}>{item.brand}</Text>
-            <Text style={styles.productPrice}>KES {item.price.toLocaleString()}</Text>
+            <Text style={styles.productPrice}>KES {(item.retail_price || item.price).toLocaleString()}</Text>
             <Text style={[styles.stockText, {color: item.quantity>10?COLORS.success:item.quantity>0?COLORS.warning:COLORS.error}]}>
               {item.quantity>10?'In Stock':item.quantity>0?`${item.quantity} left`:'Out of Stock'}
             </Text>
@@ -278,7 +249,6 @@ function ShopScreen({ products, cart, addToCart, cartCount, setScreen, currentUs
 }
 
 // ==================== CART SCREEN ====================
-// ==================== CART SCREEN (with M-Pesa Integration) ====================
 function CartScreen({ cart, updateCartQty, removeFromCart, clearCart, cartTotal, cartCount, setScreen, setProducts, currentUser, setSalesHistory }) {
   const [showPayment, setShowPayment] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState('');
@@ -290,20 +260,50 @@ function CartScreen({ cart, updateCartQty, removeFromCart, clearCart, cartTotal,
   const [mpesaWaiting, setMpesaWaiting] = useState(false);
   const [pollTimer, setPollTimer] = useState(null);
   const [countdown, setCountdown] = useState(120);
-  const [notification, setNotification] = useState(null); // { title, message, type, onOk }
-
+  const [notification, setNotification] = useState(null);
+  const [saleType, setSaleType] = useState('retail');
+  const [showCreditForm, setShowCreditForm] = useState(false);
+  const [creditCustomerName, setCreditCustomerName] = useState('');
 
   // Cleanup timer on unmount
   useEffect(() => {
-    return () => {
-      if (pollTimer) clearInterval(pollTimer);
-    };
+    return () => { if (pollTimer) clearInterval(pollTimer); };
   }, [pollTimer]);
+
+  // Calculate total based on sale type
+  const calculatedTotal = cart.reduce((t, i) => {
+    const price = saleType === 'wholesale' && i.wholesale_price > 0 
+      ? i.wholesale_price 
+      : (i.retail_price || i.price);
+    return t + (price * i.qty);
+  }, 0);
+
+  // Helper to get correct price based on sale type
+  const getItemPrice = (item) => {
+    return saleType === 'wholesale' && item.wholesale_price > 0 
+      ? item.wholesale_price 
+      : (item.retail_price || item.price);
+  };
+
+  // Build sale items with correct pricing
+  const buildSaleItems = () => {
+    return cart.map(c => {
+      const price = getItemPrice(c);
+      return {
+        product_id: c.id,
+        product_name: c.name,
+        quantity: c.qty,
+        unit_price: price,
+        total_price: price * c.qty,
+        cost_price: c.cost_price || 0
+      };
+    });
+  };
 
   // Cash payment handler
   const handleCashPayment = () => {
     const cash = parseFloat(cashTendered) || 0;
-    if (cash < cartTotal) { 
+    if (cash < calculatedTotal) { 
       setNotification({
         title: 'Error', message: 'Insufficient cash amount.',
         type: 'error', onOk: () => setNotification(null)
@@ -312,44 +312,36 @@ function CartScreen({ cart, updateCartQty, removeFromCart, clearCart, cartTotal,
     }
     
     const sale = {
-      total_amount: cartTotal,
+      total_amount: calculatedTotal,
       payment_method: 'cash',
       payment_status: 'completed',
+      sale_type: saleType,
       cash_tendered: cash,
-      change_amount: cash - cartTotal,
+      change_amount: cash - calculatedTotal,
       cashier_id: currentUser?.id || '1',
-      items: cart.map(c => ({
-        product_id: c.id,
-        product_name: c.name,
-        quantity: c.qty,
-        unit_price: c.price,
-        total_price: c.price * c.qty,
-        cost_price: c.cost_price || 0  // Include cost price
-      }))
+      items: buildSaleItems()
     };
     
     // Send to server
     console.log('Sending sale to server:', JSON.stringify(sale));
     fetch(`${API_URL}/api/sales`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(sale),
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(sale),
     }).then(res => res.json()).then(data => {
       console.log('Sale recorded on server:', data);
     }).catch(err => {
-      console.log('Server not available, sale saved locally only:', err.message);
+      console.log('Server not available:', err.message);
     });
     
-    // Also update local state
+    // Update local state
     const localSale = {
       id: Date.now().toString(),
       receipt: `GBS-${Date.now().toString().slice(-8)}`,
       date: new Date().toISOString(),
-      items: cart.map(c => ({ name: c.name, qty: c.qty, price: c.price, total: c.price * c.qty, cost: c.cost_price || 0 })),
-      totalAmount: cartTotal,
+      items: cart.map(c => ({ name: c.name, qty: c.qty, price: getItemPrice(c), total: getItemPrice(c) * c.qty, cost: c.cost_price || 0 })),
+      totalAmount: calculatedTotal,
       paymentMethod: 'cash',
       cashTendered: cash,
-      change: cash - cartTotal,
+      change: cash - calculatedTotal,
       cashier: currentUser?.fullName || 'Unknown',
     };
     setSalesHistory(prev => [localSale, ...prev]);
@@ -364,13 +356,9 @@ function CartScreen({ cart, updateCartQty, removeFromCart, clearCart, cartTotal,
     
     setNotification({
       title: '✅ Payment Successful',
-      message: `Receipt: ${localSale.receipt}\nTotal: KES ${cartTotal.toLocaleString()}\nChange: KES ${(cash-cartTotal).toLocaleString()}\n\nThank you for your purchase!`,
+      message: `Receipt: ${localSale.receipt}\nTotal: KES ${calculatedTotal.toLocaleString()}\nChange: KES ${(cash - calculatedTotal).toLocaleString()}\n\nThank you for your purchase!`,
       type: 'success',
-      onOk: () => {
-        clearCart();
-        setScreen('shop');
-        setNotification(null);
-      }
+      onOk: () => { clearCart(); setScreen('shop'); setNotification(null); }
     });
   };
 
@@ -384,26 +372,17 @@ function CartScreen({ cart, updateCartQty, removeFromCart, clearCart, cartTotal,
     setMpesaLoading(true);
     setMpesaStatus('Connecting to M-Pesa server...');
 
-    // Test connection first
     const connection = await mpesaService.testConnection();
     if (!connection.connected) {
       setMpesaLoading(false);
       setMpesaStatus('');
-      Alert.alert(
-        'M-Pesa Unavailable',
-        connection.message + '\n\nMake sure:\n1. Backend server is running (python app.py)\n2. Server URL is correct\n3. Internet is connected',
-        [{ text: 'OK' }]
-      );
+      Alert.alert('M-Pesa Unavailable', connection.message + '\n\nEnsure server is running and internet is connected.', [{ text: 'OK' }]);
       return;
     }
 
     setMpesaStatus('Sending M-Pesa request...');
     
-    const result = await mpesaService.initiatePayment(
-      phoneNumber,
-      cartTotal,
-      `GBS-${Date.now().toString().slice(-6)}`
-    );
+    const result = await mpesaService.initiatePayment(phoneNumber, calculatedTotal, `GBS-${Date.now().toString().slice(-6)}`);
 
     if (result.success) {
       setMpesaCheckoutId(result.checkoutRequestId);
@@ -415,15 +394,41 @@ function CartScreen({ cart, updateCartQty, removeFromCart, clearCart, cartTotal,
     } else {
       setMpesaLoading(false);
       setMpesaStatus('');
-      Alert.alert(
-        'M-Pesa Failed',
-        result.error + '\n\nWould you like to try again?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Try Again', onPress: () => handleMpesaPayment() }
-        ]
-      );
+      Alert.alert('M-Pesa Failed', result.error + '\n\nWould you like to try again?', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Try Again', onPress: () => handleMpesaPayment() }
+      ]);
     }
+  };
+
+  // Credit payment handler
+  const handleCreditPayment = () => setShowCreditForm(true);
+
+  const confirmCreditPayment = () => {
+    if (!creditCustomerName.trim()) {
+      Alert.alert('Error', 'Please enter customer name');
+      return;
+    }
+    
+    const sale = {
+      total_amount: calculatedTotal,
+      payment_method: 'credit',
+      payment_status: 'pending',
+      sale_type: saleType,
+      credit_customer_name: creditCustomerName.trim(),
+      credit_customer_phone: '',
+      cashier_id: currentUser?.id || '1',
+      items: buildSaleItems()
+    };
+    
+    fetch(`${API_URL}/api/sales`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(sale),
+    }).then(() => {
+      clearCart(); setScreen('shop'); setShowCreditForm(false); setCreditCustomerName('');
+      Alert.alert('Credit Sale', `Customer: ${creditCustomerName}\nAmount: KES ${calculatedTotal.toLocaleString()}\n\nPending payment.`);
+    }).catch(() => {
+      Alert.alert('Error', 'Failed to record credit sale');
+    });
   };
 
   // Poll for payment status
@@ -434,10 +439,8 @@ function CartScreen({ cart, updateCartQty, removeFromCart, clearCart, cartTotal,
       setCountdown(120 - elapsed);
       
       const status = await mpesaService.checkStatus(checkoutId);
-      console.log('[Cart] Poll status:', status.status, status.message);
       
-        if (status.status === 'Success') {
-        console.log('[Cart] Payment successful!');
+      if (status.status === 'Success') {
         clearInterval(timer);
         setPollTimer(null);
         setMpesaWaiting(false);
@@ -445,26 +448,36 @@ function CartScreen({ cart, updateCartQty, removeFromCart, clearCart, cartTotal,
         setMpesaStatus('');
         setShowPayment(false);
         
-        // Create the sale object - THIS WAS MISSING
         const sale = {
           id: Date.now().toString(),
           receipt: status.receipt || `GBS-${Date.now().toString().slice(-8)}`,
           date: new Date().toISOString(),
-          items: cart.map(c => ({ 
-            name: c.name, 
-            qty: c.qty, 
-            price: c.price, 
-            total: c.price * c.qty, 
-            cost: c.cost_price || 0 
-          })),
-          totalAmount: cartTotal,
+          items: cart.map(c => ({ name: c.name, qty: c.qty, price: getItemPrice(c), total: getItemPrice(c) * c.qty, cost: c.cost_price || 0 })),
+          totalAmount: calculatedTotal,
           paymentMethod: 'mpesa',
+          saleType: saleType,
           phone: phoneNumber,
           mpesaRef: status.receipt,
           cashier: currentUser?.fullName || 'Unknown',
         };
         
         setSalesHistory(prev => [sale, ...prev]);
+
+        // Send to server with correct prices
+        const saleData = {
+          total_amount: calculatedTotal,
+          payment_method: 'mpesa',
+          payment_status: 'completed',
+          sale_type: saleType,
+          mpesa_receipt_number: status.receipt,
+          cashier_id: currentUser?.id || '1',
+          customer_phone: phoneNumber,
+          items: buildSaleItems()
+        };
+        
+        fetch(`${API_URL}/api/sales`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(saleData),
+        }).catch(err => console.log('Server save failed:', err.message));
         
         setProducts(prev => prev.map(p => {
           const cartItem = cart.find(c => c.id === p.id);
@@ -472,81 +485,43 @@ function CartScreen({ cart, updateCartQty, removeFromCart, clearCart, cartTotal,
           return p;
         }));
         
-        // Show success notification
         setTimeout(() => {
           setNotification({
             title: '✅ Payment Successful',
-            message: `M-Pesa payment received!\n\nReceipt: ${sale.receipt}\nAmount: KES ${cartTotal.toLocaleString()}\n\nThank you for your purchase!`,
+            message: `M-Pesa payment received!\n\nReceipt: ${sale.receipt}\nAmount: KES ${calculatedTotal.toLocaleString()}\n\nThank you for your purchase!`,
             type: 'success',
-            onOk: () => {
-              clearCart();
-              setScreen('shop');
-              setNotification(null);
-            }
-          });
-        }, 500);        
-      } else if (status.status === 'Cancelled') {
-        console.log('[Cart] Payment cancelled');
-        clearInterval(timer);
-        setPollTimer(null);
-        setMpesaWaiting(false);
-        setMpesaCheckoutId(null);
-        setMpesaStatus('');
-        setShowPayment(false);
-        
-        setTimeout(() => {
-          setNotification({
-            title: '🚫 Transaction Cancelled',
-            message: 'The customer cancelled the M-Pesa prompt on their phone.\n\nThe items are still in your cart.',
-            type: 'warning',
-            onOk: () => setNotification(null),
-            onRetry: () => {
-              setNotification(null);
-              setPaymentMethod('mpesa');
-              setShowPayment(true);
-            }
+            onOk: () => { clearCart(); setScreen('shop'); setNotification(null); }
           });
         }, 500);
         
+      } else if (status.status === 'Cancelled') {
+        clearInterval(timer); setPollTimer(null); setMpesaWaiting(false); setMpesaCheckoutId(null); setMpesaStatus(''); setShowPayment(false);
+        setTimeout(() => {
+          setNotification({
+            title: '🚫 Transaction Cancelled',
+            message: 'The customer cancelled the M-Pesa prompt.\n\nItems are still in your cart.',
+            type: 'warning',
+            onOk: () => setNotification(null),
+            onRetry: () => { setNotification(null); setPaymentMethod('mpesa'); setShowPayment(true); }
+          });
+        }, 500);
       } else if (status.status === 'Failed') {
-        console.log('[Cart] Payment failed');
-        clearInterval(timer);
-        setPollTimer(null);
-        setMpesaWaiting(false);
-        setMpesaCheckoutId(null);
-        setMpesaStatus('');
-        setShowPayment(false);
-        
+        clearInterval(timer); setPollTimer(null); setMpesaWaiting(false); setMpesaCheckoutId(null); setMpesaStatus(''); setShowPayment(false);
         setTimeout(() => {
           setNotification({
             title: '❌ Payment Failed',
-            message: status.message + '\n\nThe items are still in your cart.',
+            message: status.message + '\n\nItems are still in your cart.',
             type: 'error',
             onOk: () => setNotification(null),
-            onRetry: () => {
-              setNotification(null);
-              setPaymentMethod('mpesa');
-              setShowPayment(true);
-            }
+            onRetry: () => { setNotification(null); setPaymentMethod('mpesa'); setShowPayment(true); }
           });
         }, 500);
       }
       
       if (elapsed >= 120) {
-        clearInterval(timer);
-        setPollTimer(null);
-        setMpesaWaiting(false);
-        setMpesaCheckoutId(null);
-        setMpesaStatus('');
-        setShowPayment(false);
-        
+        clearInterval(timer); setPollTimer(null); setMpesaWaiting(false); setMpesaCheckoutId(null); setMpesaStatus(''); setShowPayment(false);
         setTimeout(() => {
-          setNotification({
-            title: '⏰ Timeout',
-            message: 'Payment confirmation timed out.\n\nItems are still in your cart.',
-            type: 'warning',
-            onOk: () => setNotification(null)
-          });
+          setNotification({ title: '⏰ Timeout', message: 'Payment confirmation timed out.\n\nItems are still in your cart.', type: 'warning', onOk: () => setNotification(null) });
         }, 500);
       }
     }, 3000);
@@ -554,25 +529,16 @@ function CartScreen({ cart, updateCartQty, removeFromCart, clearCart, cartTotal,
     setPollTimer(timer);
   };
 
-  // Cancel waiting
   const cancelWaiting = () => {
     if (pollTimer) clearInterval(pollTimer);
-    setPollTimer(null);
-    setMpesaWaiting(false);
-    setMpesaCheckoutId(null);
-    setMpesaStatus('');
+    setPollTimer(null); setMpesaWaiting(false); setMpesaCheckoutId(null); setMpesaStatus('');
     Alert.alert('Cancelled', 'Payment waiting stopped. Items are still in cart.');
   };
 
-  // Show payment method selection
   const openPayment = (method) => {
-    setPaymentMethod(method);
-    setShowPayment(true);
-    setCashTendered('');
-    setPhoneNumber('');
-    setMpesaStatus('');
-    setMpesaWaiting(false);
-    setMpesaLoading(false);
+    setPaymentMethod(method); setShowPayment(true);
+    setCashTendered(''); setPhoneNumber('');
+    setMpesaStatus(''); setMpesaWaiting(false); setMpesaLoading(false);
   };
 
   if (cart.length === 0) {
@@ -600,7 +566,7 @@ function CartScreen({ cart, updateCartQty, removeFromCart, clearCart, cartTotal,
           <View style={styles.cartItem}>
             <View style={styles.cartItemInfo}>
               <Text style={styles.cartItemName}>{item.name}</Text>
-              <Text style={styles.cartItemPrice}>KES {item.price.toLocaleString()}</Text>
+              <Text style={styles.cartItemPrice}>KES {getItemPrice(item).toLocaleString()}</Text>
               <View style={styles.qtyRow}>
                 <TouchableOpacity style={styles.qtyBtn} onPress={()=>updateCartQty(item.id,-1)}><Text style={styles.qtyBtnText}>−</Text></TouchableOpacity>
                 <Text style={styles.qtyValue}>{item.qty}</Text>
@@ -608,7 +574,7 @@ function CartScreen({ cart, updateCartQty, removeFromCart, clearCart, cartTotal,
               </View>
             </View>
             <View style={styles.cartItemRight}>
-              <Text style={styles.cartItemTotal}>KES {(item.price*item.qty).toLocaleString()}</Text>
+              <Text style={styles.cartItemTotal}>KES {(getItemPrice(item) * item.qty).toLocaleString()}</Text>
               <TouchableOpacity style={styles.removeBtn} onPress={()=>removeFromCart(item.id)}><Text style={styles.removeBtnText}>✕</Text></TouchableOpacity>
             </View>
           </View>
@@ -616,10 +582,19 @@ function CartScreen({ cart, updateCartQty, removeFromCart, clearCart, cartTotal,
       />
 
       <View style={styles.cartFooter}>
-        <Text style={styles.totalText}>Total: KES {cartTotal.toLocaleString()}</Text>
+        <Text style={styles.totalText}>Total: KES {calculatedTotal.toLocaleString()}</Text>
+        <View style={styles.saleTypeRow}>
+          <TouchableOpacity style={[styles.saleTypeBtn, saleType==='retail'&&styles.saleTypeActive]} onPress={()=>setSaleType('retail')}>
+            <Text style={[styles.saleTypeText, saleType==='retail'&&styles.saleTypeTextActive]}>Retail</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.saleTypeBtn, saleType==='wholesale'&&styles.saleTypeActive]} onPress={()=>setSaleType('wholesale')}>
+            <Text style={[styles.saleTypeText, saleType==='wholesale'&&styles.saleTypeTextActive]}>Wholesale</Text>
+          </TouchableOpacity>
+        </View>
         <View style={styles.paymentRow}>
-          <TouchableOpacity style={styles.payBtn} onPress={()=>openPayment('cash')}><Text style={styles.payBtnText}>Pay Cash</Text></TouchableOpacity>
-          <TouchableOpacity style={[styles.payBtn,{backgroundColor:'#4CAF50'}]} onPress={()=>openPayment('mpesa')}><Text style={styles.payBtnText}>Pay M-Pesa</Text></TouchableOpacity>
+          <TouchableOpacity style={styles.payBtn} onPress={()=>openPayment('cash')}><Text style={styles.payBtnText}>Cash</Text></TouchableOpacity>
+          <TouchableOpacity style={[styles.payBtn,{backgroundColor:'#4CAF50'}]} onPress={()=>openPayment('mpesa')}><Text style={styles.payBtnText}>M-Pesa</Text></TouchableOpacity>
+          <TouchableOpacity style={[styles.payBtn,{backgroundColor:COLORS.warning}]} onPress={handleCreditPayment}><Text style={styles.payBtnText}>Credit</Text></TouchableOpacity>
         </View>
       </View>
 
@@ -629,99 +604,83 @@ function CartScreen({ cart, updateCartQty, removeFromCart, clearCart, cartTotal,
           <ScrollView contentContainerStyle={{flexGrow:1, justifyContent:'center'}}>
             <View style={styles.modalContent}>
               <Text style={styles.modalTitle}>{paymentMethod==='cash'?'Cash Payment':'M-Pesa Payment'}</Text>
-              <Text style={styles.modalAmount}>KES {cartTotal.toLocaleString()}</Text>
+              <Text style={styles.modalAmount}>KES {calculatedTotal.toLocaleString()}</Text>
               
-              {/* Cash Payment */}
               {paymentMethod === 'cash' && !mpesaWaiting && (
                 <>
                   <TextInput style={styles.input} placeholder="Cash tendered" value={cashTendered} onChangeText={setCashTendered} keyboardType="decimal-pad" />
-                  {cashTendered && parseFloat(cashTendered) >= cartTotal && (
-                    <Text style={styles.changeText}>Change: KES {(parseFloat(cashTendered)-cartTotal).toLocaleString()}</Text>
+                  {cashTendered && parseFloat(cashTendered) >= calculatedTotal && (
+                    <Text style={styles.changeText}>Change: KES {(parseFloat(cashTendered)-calculatedTotal).toLocaleString()}</Text>
                   )}
                   <View style={styles.modalBtns}>
                     <TouchableOpacity style={styles.cancelBtn} onPress={()=>setShowPayment(false)}><Text>Cancel</Text></TouchableOpacity>
-                    <TouchableOpacity style={styles.confirmBtn} onPress={handleCashPayment}>
-                      <Text style={styles.confirmBtnText}>Pay </Text>
-                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.confirmBtn} onPress={handleCashPayment}><Text style={styles.confirmBtnText}>Pay</Text></TouchableOpacity>
                   </View>
                 </>
               )}
 
-              {/* M-Pesa Payment - Input */}
               {paymentMethod === 'mpesa' && !mpesaWaiting && (
                 <>
                   <TextInput style={styles.input} placeholder="0712..." value={phoneNumber} onChangeText={setPhoneNumber} keyboardType="phone-pad" />
                   <View style={styles.modalBtns}>
                     <TouchableOpacity style={styles.cancelBtn} onPress={()=>setShowPayment(false)}><Text>Cancel</Text></TouchableOpacity>
-                    <TouchableOpacity 
-                      style={[styles.confirmBtn, {backgroundColor: '#4CAF50'}]} 
-                      onPress={handleMpesaPayment}
-                      disabled={mpesaLoading}
-                    >
-                      {mpesaLoading ? (
-                        <ActivityIndicator color={COLORS.textWhite} size="small" />
-                      ) : (
-                        <Text style={styles.confirmBtnText}>Send Request</Text>
-                      )}
+                    <TouchableOpacity style={[styles.confirmBtn, {backgroundColor: '#4CAF50'}]} onPress={handleMpesaPayment} disabled={mpesaLoading}>
+                      {mpesaLoading ? <ActivityIndicator color={COLORS.textWhite} size="small" /> : <Text style={styles.confirmBtnText}>Send Request</Text>}
                     </TouchableOpacity>
                   </View>
-                  {mpesaStatus ? (
-                    <Text style={styles.mpesaStatus}>{mpesaStatus}</Text>
-                  ) : null}
+                  {mpesaStatus ? <Text style={styles.mpesaStatus}>{mpesaStatus}</Text> : null}
                 </>
               )}
 
-              {/* M-Pesa Waiting Dialog */}
               {paymentMethod === 'mpesa' && mpesaWaiting && (
                 <View style={styles.waitingContainer}>
                   <ActivityIndicator size="large" color="#4CAF50" />
                   <Text style={styles.waitingTitle}>Waiting for Payment</Text>
-                  <Text style={styles.waitingAmount}>KES {cartTotal.toLocaleString()}</Text>
+                  <Text style={styles.waitingAmount}>KES {calculatedTotal.toLocaleString()}</Text>
                   <Text style={styles.waitingPhone}>Sent to: {phoneNumber}</Text>
                   <Text style={styles.waitingStatus}>{mpesaStatus}</Text>
                   <Text style={styles.waitingTimer}>Time remaining: {countdown}s</Text>
-                  <View style={styles.progressBar}>
-                    <View style={[styles.progressFill, {width: `${((120-countdown)/120)*100}%`}]} />
-                  </View>
-                  <TouchableOpacity style={[styles.cancelBtn, {marginTop:15}]} onPress={cancelWaiting}>
-                    <Text style={{color: COLORS.error}}>Cancel Payment</Text>
-                  </TouchableOpacity>
+                  <View style={styles.progressBar}><View style={[styles.progressFill, {width: `${((120-countdown)/120)*100}%`}]} /></View>
+                  <TouchableOpacity style={[styles.cancelBtn, {marginTop:15}]} onPress={cancelWaiting}><Text style={{color: COLORS.error}}>Cancel Payment</Text></TouchableOpacity>
                 </View>
               )}
             </View>
           </ScrollView>
         </View>
       </Modal>
+
+      {/* Notification Modal */}
       <Modal visible={notification !== null} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.notificationCard}>
-            <Text style={[
-              styles.notificationIcon,
-              {color: notification?.type === 'success' ? COLORS.success : 
-                      notification?.type === 'error' ? COLORS.error : COLORS.warning}
-            ]}>
-              {notification?.type === 'success' ? '✅' : 
-               notification?.type === 'error' ? '❌' : '🚫'}
+            <Text style={[styles.notificationIcon, {color: notification?.type === 'success' ? COLORS.success : notification?.type === 'error' ? COLORS.error : COLORS.warning}]}>
+              {notification?.type === 'success' ? '✅' : notification?.type === 'error' ? '❌' : '🚫'}
             </Text>
             <Text style={styles.notificationTitle}>{notification?.title}</Text>
             <Text style={styles.notificationMessage}>{notification?.message}</Text>
-            
             <View style={styles.notificationBtns}>
               {notification?.onRetry && (
-                <TouchableOpacity style={styles.notifRetryBtn} onPress={notification.onRetry}>
-                  <Text style={styles.notifRetryText}>Retry Payment</Text>
-                </TouchableOpacity>
+                <TouchableOpacity style={styles.notifRetryBtn} onPress={notification.onRetry}><Text style={styles.notifRetryText}>Retry Payment</Text></TouchableOpacity>
               )}
-              <TouchableOpacity 
-                style={[styles.notifOkBtn, {backgroundColor: 
-                  notification?.type === 'success' ? COLORS.success : 
-                  notification?.type === 'error' ? COLORS.error : COLORS.primary}]} 
-                onPress={notification?.onOk}
-              >
-                <Text style={styles.notifOkText}>
-                  {notification?.type === 'success' ? 'Done' : 'OK'}
-                </Text>
+              <TouchableOpacity style={[styles.notifOkBtn, {backgroundColor: notification?.type === 'success' ? COLORS.success : notification?.type === 'error' ? COLORS.error : COLORS.primary}]} onPress={notification?.onOk}>
+                <Text style={styles.notifOkText}>{notification?.type === 'success' ? 'Done' : 'OK'}</Text>
               </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Credit Form Modal */}
+      <Modal visible={showCreditForm} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Credit Sale</Text>
+            <Text style={styles.modalAmount}>KES {calculatedTotal.toLocaleString()}</Text>
+            <Text style={styles.fieldLabel}>Customer Name</Text>
+            <TextInput style={styles.input} placeholder="Enter customer name" value={creditCustomerName} onChangeText={setCreditCustomerName} />
+            <View style={styles.modalBtns}>
+              <TouchableOpacity style={styles.cancelBtn} onPress={()=>{setShowCreditForm(false);setCreditCustomerName('');}}><Text>Cancel</Text></TouchableOpacity>
+              <TouchableOpacity style={[styles.confirmBtn,{backgroundColor:COLORS.warning}]} onPress={confirmCreditPayment}><Text style={styles.confirmBtnText}>Confirm Credit</Text></TouchableOpacity>
             </View>
           </View>
         </View>
@@ -730,11 +689,12 @@ function CartScreen({ cart, updateCartQty, removeFromCart, clearCart, cartTotal,
   );
 }
 // ==================== REPORTS SCREEN ====================
-function ReportsScreen({ setScreen }) {
+function ReportsScreen({ setScreen, products, currentUser }) {
   const [selectedReport, setSelectedReport] = useState(null);
   const [dateFilter, setDateFilter] = useState('all');
   const [serverSales, setServerSales] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   // Fetch sales from server
   const fetchSalesFromServer = async () => {
@@ -752,37 +712,32 @@ function ReportsScreen({ setScreen }) {
     setLoading(false);
   };
 
-  // Fetch on mount and when filter changes
   useEffect(() => {
     fetchSalesFromServer();
   }, [dateFilter]);
 
-  // Use serverSales instead of salesHistory for all calculations
+  // Filter sales by date
   const filteredSales = serverSales.filter(sale => {
     const saleDate = new Date(sale.created_at || sale.date);
     const now = new Date();
     const today = now.toDateString();
     const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-
     if (dateFilter === 'today') return saleDate.toDateString() === today;
     if (dateFilter === 'week') return saleDate >= weekAgo;
     if (dateFilter === 'month') return saleDate >= monthAgo;
     return true;
   });
 
-  // Calculate summaries from filteredSales
+  // Calculate summaries
   const totalSales = filteredSales.reduce((sum, s) => sum + (s.total_amount || 0), 0);
   const totalTransactions = filteredSales.length;
-  const cashSales = filteredSales
-    .filter(s => (s.payment_method === 'cash'))
-    .reduce((sum, s) => sum + (s.total_amount || 0), 0);
-  const mpesaSales = filteredSales
-    .filter(s => (s.payment_method === 'mpesa'))
-    .reduce((sum, s) => sum + (s.total_amount || 0), 0);
+  const cashSales = filteredSales.filter(s => s.payment_method === 'cash').reduce((sum, s) => sum + (s.total_amount || 0), 0);
+  const mpesaSales = filteredSales.filter(s => s.payment_method === 'mpesa').reduce((sum, s) => sum + (s.total_amount || 0), 0);
+  const creditSales = filteredSales.filter(s => s.payment_method === 'credit').reduce((sum, s) => sum + (s.total_amount || 0), 0);
   const avgSale = totalTransactions > 0 ? totalSales / totalTransactions : 0;
 
-    // Product breakdown - use actual profit from server
+  // Product breakdown
   const productBreakdown = {};
   filteredSales.forEach(sale => {
     const items = sale.items || [];
@@ -792,12 +747,14 @@ function ReportsScreen({ setScreen }) {
       if (!productBreakdown[name]) {
         productBreakdown[name] = { name, qty: 0, revenue: 0, cost: 0, profit: 0 };
       }
-      productBreakdown[name].qty += (item.quantity || 0);
-      productBreakdown[name].revenue += (item.total_price || 0);
-      // Use actual cost and profit from server
-      const cost = (item.cost_price || 0) * (item.quantity || 0);
-      const profit = (item.profit || 0);
-      productBreakdown[name].cost += cost;
+      const qty = item.quantity || 0;
+      const revenue = item.total_price || 0;
+      const unitCost = item.cost_price || products?.find(p => p.name === name || p.id === item.product_id)?.cost_price || 0;
+      const totalCost = unitCost * qty;
+      const profit = revenue - totalCost;
+      productBreakdown[name].qty += qty;
+      productBreakdown[name].revenue += revenue;
+      productBreakdown[name].cost += totalCost;
       productBreakdown[name].profit += profit;
     });
   });
@@ -805,7 +762,7 @@ function ReportsScreen({ setScreen }) {
   const totalCost = productList.reduce((sum, p) => sum + p.cost, 0);
   const totalProfit = productList.reduce((sum, p) => sum + p.profit, 0);
 
-  // Report type selection screen
+  // ===== REPORT SELECTION SCREEN =====
   if (!selectedReport) {
     return (
       <View style={styles.screenContainer}>
@@ -815,30 +772,28 @@ function ReportsScreen({ setScreen }) {
           <View/>
         </View>
         <ScrollView style={{padding:15}}>
-          {/* Date Filter */}
           <Text style={styles.sectionTitle}>Filter</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{marginBottom:15}}>
             {['all','today','week','month'].map(f => (
               <TouchableOpacity key={f} style={[styles.catBtn, dateFilter===f&&styles.catBtnActive]} onPress={()=>setDateFilter(f)}>
-                <Text style={[styles.catText, dateFilter===f&&styles.catTextActive]}>{f === 'all' ? 'All Time' : f === 'today' ? 'Today' : f === 'week' ? 'This Week' : 'This Month'}</Text>
+                <Text style={[styles.catText, dateFilter===f&&styles.catTextActive]}>
+                  {f === 'all' ? 'All Time' : f === 'today' ? 'Today' : f === 'week' ? 'This Week' : 'This Month'}
+                </Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
 
-          {/* Report Types */}
           <Text style={styles.sectionTitle}>Report Types</Text>
           <TouchableOpacity style={styles.reportCard} onPress={()=>setSelectedReport('summary')}>
             <Text style={styles.reportCardTitle}>📊 Sales Summary</Text>
             <Text style={styles.reportCardDesc}>Overview of sales, transactions, and payment methods</Text>
             <Text style={styles.reportCardValue}>{totalTransactions} transactions | KES {totalSales.toLocaleString()}</Text>
           </TouchableOpacity>
-
           <TouchableOpacity style={styles.reportCard} onPress={()=>setSelectedReport('products')}>
             <Text style={styles.reportCardTitle}>📦 Product Breakdown</Text>
             <Text style={styles.reportCardDesc}>Sales by product with quantities and revenue</Text>
             <Text style={styles.reportCardValue}>{productList.length} products sold</Text>
           </TouchableOpacity>
-
           <TouchableOpacity style={styles.reportCard} onPress={()=>setSelectedReport('profit')}>
             <Text style={styles.reportCardTitle}>💰 Profit & Loss</Text>
             <Text style={styles.reportCardDesc}>Revenue, costs, and profit analysis</Text>
@@ -846,7 +801,6 @@ function ReportsScreen({ setScreen }) {
               {totalProfit >= 0 ? 'Profit' : 'Loss'}: KES {Math.abs(totalProfit).toLocaleString()}
             </Text>
           </TouchableOpacity>
-
           <TouchableOpacity style={styles.reportCard} onPress={()=>setSelectedReport('transactions')}>
             <Text style={styles.reportCardTitle}>🧾 Recent Transactions</Text>
             <Text style={styles.reportCardDesc}>List of all sales transactions</Text>
@@ -867,52 +821,18 @@ function ReportsScreen({ setScreen }) {
           <View/>
         </View>
         <ScrollView style={{padding:15}}>
-          {/* Summary Cards */}
           <View style={styles.summaryGrid}>
-            <View style={[styles.summaryCard, {backgroundColor: '#FFF0F5'}]}>
-              <Text style={styles.summaryIcon}>💰</Text>
-              <Text style={styles.summaryLabel}>Total Sales</Text>
-              <Text style={styles.summaryValue}>KES {totalSales.toLocaleString()}</Text>
-            </View>
-            <View style={[styles.summaryCard, {backgroundColor: '#F0FFF0'}]}>
-              <Text style={styles.summaryIcon}>🧾</Text>
-              <Text style={styles.summaryLabel}>Transactions</Text>
-              <Text style={styles.summaryValue}>{totalTransactions}</Text>
-            </View>
-            <View style={[styles.summaryCard, {backgroundColor: '#FFF8E1'}]}>
-              <Text style={styles.summaryIcon}>💵</Text>
-              <Text style={styles.summaryLabel}>Cash Sales</Text>
-              <Text style={styles.summaryValue}>KES {cashSales.toLocaleString()}</Text>
-            </View>
-            <View style={[styles.summaryCard, {backgroundColor: '#E8F5E9'}]}>
-              <Text style={styles.summaryIcon}>📱</Text>
-              <Text style={styles.summaryLabel}>M-Pesa Sales</Text>
-              <Text style={styles.summaryValue}>KES {mpesaSales.toLocaleString()}</Text>
-            </View>
+            <View style={[styles.summaryCard, {backgroundColor: '#FFF0F5'}]}><Text style={styles.summaryIcon}>💰</Text><Text style={styles.summaryLabel}>Total Sales</Text><Text style={styles.summaryValue}>KES {totalSales.toLocaleString()}</Text></View>
+            <View style={[styles.summaryCard, {backgroundColor: '#F0FFF0'}]}><Text style={styles.summaryIcon}>🧾</Text><Text style={styles.summaryLabel}>Transactions</Text><Text style={styles.summaryValue}>{totalTransactions}</Text></View>
+            <View style={[styles.summaryCard, {backgroundColor: '#FFF8E1'}]}><Text style={styles.summaryIcon}>💵</Text><Text style={styles.summaryLabel}>Cash Sales</Text><Text style={styles.summaryValue}>KES {cashSales.toLocaleString()}</Text></View>
+            <View style={[styles.summaryCard, {backgroundColor: '#E8F5E9'}]}><Text style={styles.summaryIcon}>📱</Text><Text style={styles.summaryLabel}>M-Pesa Sales</Text><Text style={styles.summaryValue}>KES {mpesaSales.toLocaleString()}</Text></View>
+            {creditSales > 0 && <View style={[styles.summaryCard, {backgroundColor: '#FFF3E0'}]}><Text style={styles.summaryIcon}>📋</Text><Text style={styles.summaryLabel}>Credit Sales</Text><Text style={styles.summaryValue}>KES {creditSales.toLocaleString()}</Text></View>}
           </View>
-
-          <View style={styles.avgCard}>
-            <Text style={styles.avgLabel}>Average Sale Value</Text>
-            <Text style={styles.avgValue}>KES {avgSale.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</Text>
-          </View>
-
-          {/* Payment Method Breakdown */}
+          <View style={styles.avgCard}><Text style={styles.avgLabel}>Average Sale Value</Text><Text style={styles.avgValue}>KES {avgSale.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</Text></View>
           <Text style={styles.sectionTitle}>Payment Methods</Text>
           <View style={styles.barContainer}>
-            <View style={styles.barRow}>
-              <Text style={styles.barLabel}>Cash</Text>
-              <View style={styles.barTrack}>
-                <View style={[styles.barFill, {width: totalSales > 0 ? `${(cashSales/totalSales*100).toFixed(0)}%` : '0%', backgroundColor: COLORS.success}]} />
-              </View>
-              <Text style={styles.barPercent}>{totalSales > 0 ? (cashSales/totalSales*100).toFixed(0) : 0}%</Text>
-            </View>
-            <View style={styles.barRow}>
-              <Text style={styles.barLabel}>M-Pesa</Text>
-              <View style={styles.barTrack}>
-                <View style={[styles.barFill, {width: totalSales > 0 ? `${(mpesaSales/totalSales*100).toFixed(0)}%` : '0%', backgroundColor: '#4CAF50'}]} />
-              </View>
-              <Text style={styles.barPercent}>{totalSales > 0 ? (mpesaSales/totalSales*100).toFixed(0) : 0}%</Text>
-            </View>
+            <View style={styles.barRow}><Text style={styles.barLabel}>Cash</Text><View style={styles.barTrack}><View style={[styles.barFill, {width: totalSales > 0 ? `${(cashSales/totalSales*100).toFixed(0)}%` : '0%', backgroundColor: COLORS.success}]} /></View><Text style={styles.barPercent}>{totalSales > 0 ? (cashSales/totalSales*100).toFixed(0) : 0}%</Text></View>
+            <View style={styles.barRow}><Text style={styles.barLabel}>M-Pesa</Text><View style={styles.barTrack}><View style={[styles.barFill, {width: totalSales > 0 ? `${(mpesaSales/totalSales*100).toFixed(0)}%` : '0%', backgroundColor: '#4CAF50'}]} /></View><Text style={styles.barPercent}>{totalSales > 0 ? (mpesaSales/totalSales*100).toFixed(0) : 0}%</Text></View>
           </View>
         </ScrollView>
       </View>
@@ -923,43 +843,18 @@ function ReportsScreen({ setScreen }) {
   if (selectedReport === 'products') {
     return (
       <View style={styles.screenContainer}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={()=>setSelectedReport(null)}><Text style={styles.backText}>← Back</Text></TouchableOpacity>
-          <Text style={styles.headerTitle}>Product Breakdown</Text>
-          <View/>
-        </View>
-        <FlatList
-          data={productList}
-          keyExtractor={item => item.name}
-          contentContainerStyle={{padding:15}}
-          ListHeaderComponent={
-            <View style={styles.tableHeader}>
-              <Text style={[styles.thText, {flex:2}]}>Product</Text>
-              <Text style={[styles.thText, {flex:1}]}>Qty</Text>
-              <Text style={[styles.thText, {flex:1.5}]}>Revenue</Text>
-              <Text style={[styles.thText, {flex:1.5}]}>Profit</Text>
-            </View>
-          }
+        <View style={styles.header}><TouchableOpacity onPress={()=>setSelectedReport(null)}><Text style={styles.backText}>← Back</Text></TouchableOpacity><Text style={styles.headerTitle}>Product Breakdown</Text><View/></View>
+        <FlatList data={productList} keyExtractor={item => item.name} contentContainerStyle={{padding:15}}
+          ListHeaderComponent={<View style={styles.tableHeader}><Text style={[styles.thText, {flex:2}]}>Product</Text><Text style={[styles.thText, {flex:1}]}>Qty</Text><Text style={[styles.thText, {flex:1.5}]}>Revenue</Text><Text style={[styles.thText, {flex:1.5}]}>Profit</Text></View>}
           renderItem={({ item, index }) => (
             <View style={[styles.tableRow, {backgroundColor: index % 2 === 0 ? COLORS.surface : COLORS.background}]}>
               <Text style={[styles.tdText, {flex:2}]} numberOfLines={2}>{item.name}</Text>
               <Text style={[styles.tdText, {flex:1}]}>{item.qty}</Text>
               <Text style={[styles.tdText, {flex:1.5}]}>KES {item.revenue.toLocaleString()}</Text>
-              <Text style={[styles.tdText, {flex:1.5, color: item.profit >= 0 ? COLORS.success : COLORS.error}]}>
-                KES {item.profit.toLocaleString()}
-              </Text>
+              <Text style={[styles.tdText, {flex:1.5, color: item.profit >= 0 ? COLORS.success : COLORS.error}]}>KES {item.profit.toLocaleString()}</Text>
             </View>
           )}
-          ListFooterComponent={
-            <View style={[styles.tableRow, {backgroundColor: COLORS.secondary}]}>
-              <Text style={[styles.tdText, {flex:2, fontWeight:'bold'}]}>TOTALS</Text>
-              <Text style={[styles.tdText, {flex:1, fontWeight:'bold'}]}>{productList.reduce((s,p)=>s+p.qty,0)}</Text>
-              <Text style={[styles.tdText, {flex:1.5, fontWeight:'bold'}]}>KES {totalSales.toLocaleString()}</Text>
-              <Text style={[styles.tdText, {flex:1.5, fontWeight:'bold', color: totalProfit >= 0 ? COLORS.success : COLORS.error}]}>
-                KES {totalProfit.toLocaleString()}
-              </Text>
-            </View>
-          }
+          ListFooterComponent={<View style={[styles.tableRow, {backgroundColor: COLORS.secondary}]}><Text style={[styles.tdText, {flex:2, fontWeight:'bold'}]}>TOTALS</Text><Text style={[styles.tdText, {flex:1, fontWeight:'bold'}]}>{productList.reduce((s,p)=>s+p.qty,0)}</Text><Text style={[styles.tdText, {flex:1.5, fontWeight:'bold'}]}>KES {totalSales.toLocaleString()}</Text><Text style={[styles.tdText, {flex:1.5, fontWeight:'bold', color: totalProfit >= 0 ? COLORS.success : COLORS.error}]}>KES {totalProfit.toLocaleString()}</Text></View>}
         />
       </View>
     );
@@ -968,64 +863,26 @@ function ReportsScreen({ setScreen }) {
   // ===== PROFIT & LOSS REPORT =====
   if (selectedReport === 'profit') {
     const profitMargin = totalSales > 0 ? (totalProfit / totalSales * 100) : 0;
-    
     return (
       <View style={styles.screenContainer}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={()=>setSelectedReport(null)}><Text style={styles.backText}>← Back</Text></TouchableOpacity>
-          <Text style={styles.headerTitle}>Profit & Loss</Text>
-          <View/>
-        </View>
+        <View style={styles.header}><TouchableOpacity onPress={()=>setSelectedReport(null)}><Text style={styles.backText}>← Back</Text></TouchableOpacity><Text style={styles.headerTitle}>Profit & Loss</Text><View/></View>
         <ScrollView style={{padding:15}}>
-          {/* P&L Summary */}
           <View style={styles.plCard}>
             <Text style={styles.plTitle}>Profit & Loss Statement</Text>
-            
-            <View style={styles.plRow}>
-              <Text style={styles.plLabel}>Total Revenue</Text>
-              <Text style={styles.plValue}>KES {totalSales.toLocaleString()}</Text>
-            </View>
-            <View style={styles.plRow}>
-              <Text style={styles.plLabel}>Total Cost of Goods</Text>
-              <Text style={[styles.plValue, {color: COLORS.error}]}>- KES {totalCost.toLocaleString()}</Text>
-            </View>
+            <View style={styles.plRow}><Text style={styles.plLabel}>Total Revenue</Text><Text style={styles.plValue}>KES {totalSales.toLocaleString()}</Text></View>
+            <View style={styles.plRow}><Text style={styles.plLabel}>Total Cost of Goods</Text><Text style={[styles.plValue, {color: COLORS.error}]}>- KES {totalCost.toLocaleString()}</Text></View>
             <View style={styles.plDivider} />
-            <View style={styles.plRow}>
-              <Text style={[styles.plLabel, {fontWeight:'bold', fontSize:18}]}>Gross Profit</Text>
-              <Text style={[styles.plValue, {fontWeight:'bold', fontSize:18, color: totalProfit >= 0 ? COLORS.success : COLORS.error}]}>
-                KES {totalProfit.toLocaleString()}
-              </Text>
-            </View>
-            <View style={styles.plRow}>
-              <Text style={styles.plLabel}>Profit Margin</Text>
-              <Text style={[styles.plValue, {color: profitMargin >= 0 ? COLORS.success : COLORS.error}]}>
-                {profitMargin.toFixed(1)}%
-              </Text>
-            </View>
+            <View style={styles.plRow}><Text style={[styles.plLabel, {fontWeight:'bold', fontSize:18}]}>Gross Profit</Text><Text style={[styles.plValue, {fontWeight:'bold', fontSize:18, color: totalProfit >= 0 ? COLORS.success : COLORS.error}]}>KES {totalProfit.toLocaleString()}</Text></View>
+            <View style={styles.plRow}><Text style={styles.plLabel}>Profit Margin</Text><Text style={[styles.plValue, {color: profitMargin >= 0 ? COLORS.success : COLORS.error}]}>{profitMargin.toFixed(1)}%</Text></View>
           </View>
-
-          {/* Top Products by Profit */}
           <Text style={styles.sectionTitle}>Top Products by Profit</Text>
           {productList.slice(0, 10).map((p, i) => (
             <View key={i} style={styles.plItem}>
-              <View style={{flex:1}}>
-                <Text style={styles.plItemName}>{p.name}</Text>
-                <Text style={styles.plItemQty}>{p.qty} sold</Text>
-              </View>
-              <View style={{alignItems:'flex-end'}}>
-                <Text style={[styles.plItemProfit, {color: p.profit >= 0 ? COLORS.success : COLORS.error}]}>
-                  KES {p.profit.toLocaleString()}
-                </Text>
-                <Text style={styles.plItemMargin}>
-                  Margin: {p.revenue > 0 ? ((p.profit/p.revenue)*100).toFixed(1) : 0}%
-                </Text>
-              </View>
+              <View style={{flex:1}}><Text style={styles.plItemName}>{p.name}</Text><Text style={styles.plItemQty}>{p.qty} sold</Text></View>
+              <View style={{alignItems:'flex-end'}}><Text style={[styles.plItemProfit, {color: p.profit >= 0 ? COLORS.success : COLORS.error}]}>KES {p.profit.toLocaleString()}</Text><Text style={styles.plItemMargin}>Margin: {p.revenue > 0 ? ((p.profit/p.revenue)*100).toFixed(1) : 0}%</Text></View>
             </View>
           ))}
-
-          {productList.length === 0 && (
-            <Text style={styles.emptyText}>No sales data available</Text>
-          )}
+          {productList.length === 0 && <Text style={styles.emptyText}>No sales data available</Text>}
         </ScrollView>
       </View>
     );
@@ -1035,45 +892,62 @@ function ReportsScreen({ setScreen }) {
   if (selectedReport === 'transactions') {
     return (
       <View style={styles.screenContainer}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={()=>setSelectedReport(null)}><Text style={styles.backText}>← Back</Text></TouchableOpacity>
-          <Text style={styles.headerTitle}>Transactions</Text>
-          <View/>
-        </View>
+        <View style={styles.header}><TouchableOpacity onPress={()=>setSelectedReport(null)}><Text style={styles.backText}>← Back</Text></TouchableOpacity><Text style={styles.headerTitle}>Transactions</Text><View/></View>
         {filteredSales.length === 0 ? (
-          <View style={styles.emptyCart}>
-            <Text style={styles.emptyEmoji}>🧾</Text>
-            <Text style={styles.emptyText}>No transactions yet</Text>
-          </View>
+          <View style={styles.emptyCart}><Text style={styles.emptyEmoji}>🧾</Text><Text style={styles.emptyText}>No transactions yet</Text></View>
         ) : (
-          <FlatList
-            data={filteredSales.slice(0, 50)}
-            keyExtractor={item => item.id}
-            contentContainerStyle={{padding:15}}
+          <FlatList data={filteredSales.slice(0, 50)} keyExtractor={item => item.id} contentContainerStyle={{padding:15}}
             renderItem={({ item }) => (
               <View style={styles.txnCard}>
                 <View style={styles.txnHeader}>
-                  <Text style={styles.txnReceipt}>{item.receipt}</Text>
-                  <Text style={[styles.txnMethod, {color: (item.payment_method === 'cash' || item.paymentMethod === 'cash') ? COLORS.success : '#4CAF50'}]}>
-                    {(item.payment_method === 'cash' || item.paymentMethod === 'cash') ? '💵 Cash' : '📱 M-Pesa'}
-                  </Text>
+                  <Text style={styles.txnReceipt}>{item.receipt_number || 'N/A'}</Text>
+                  <View style={{flexDirection:'row', alignItems:'center', gap:8}}>
+                    <Text style={[styles.txnMethod, {color: item.payment_method === 'cash' ? COLORS.success : item.payment_method === 'mpesa' ? '#4CAF50' : COLORS.warning}]}>
+                      {item.sale_type === 'wholesale' ? '🏪 ' : '🏬 '}
+                      {item.payment_method === 'cash' ? '💵 Cash' : item.payment_method === 'mpesa' ? '📱 M-Pesa' : '📋 Credit'}
+                    </Text>
+                    {currentUser?.role === 'admin' && (
+                      <TouchableOpacity onPress={() => { console.log('Delete icon tapped:', item.id); setDeleteTarget(item); }}>
+                        <Text style={{color: COLORS.error, fontSize: 16}}>🗑️</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
                 </View>
                 <View style={styles.txnDetails}>
                   <Text style={styles.txnDate}>{item.created_at ? new Date(item.created_at).toLocaleString() : 'N/A'}</Text>
-                  <Text style={styles.txnAmount}>KES {(item.total_amount || item.totalAmount || 0).toLocaleString()}</Text>
+                  <Text style={styles.txnAmount}>KES {(item.total_amount || 0).toLocaleString()}</Text>
                 </View>
                 <View style={styles.txnItems}>
                   {(item.items || []).map((it, idx) => (
-                    <Text key={idx} style={styles.txnItem}>
-                      {it.quantity || 0}x {it.product_name || 'Item'} @ KES {(it.unit_price || 0).toLocaleString()}
-                    </Text>
+                    <Text key={idx} style={styles.txnItem}>{it.quantity || 0}x {it.product_name || 'Item'} @ KES {(it.unit_price || 0).toLocaleString()}</Text>
                   ))}
                 </View>
-                <Text style={styles.txnCashier}>Cashier: {item.cashier}</Text>
+                <Text style={styles.txnCashier}>Cashier: {item.cashier || 'N/A'}</Text>
               </View>
             )}
           />
         )}
+        
+        {/* Delete Confirmation Modal */}
+        <Modal visible={deleteTarget !== null} transparent animationType="fade">
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>Delete Transaction</Text>
+              <Text style={{textAlign:'center', marginBottom:5, color:COLORS.text}}>{deleteTarget?.receipt_number || 'N/A'}</Text>
+              <Text style={styles.modalAmount}>KES {(deleteTarget?.total_amount || 0).toLocaleString()}</Text>
+              <Text style={{textAlign:'center', color:COLORS.error, marginTop:10, fontSize:13}}>This cannot be undone!</Text>
+              <View style={styles.modalBtns}>
+                <TouchableOpacity style={styles.cancelBtn} onPress={() => setDeleteTarget(null)}><Text>Cancel</Text></TouchableOpacity>
+                <TouchableOpacity style={[styles.confirmBtn, {backgroundColor: COLORS.error}]} onPress={async () => {
+                  const sale = deleteTarget;
+                  setDeleteTarget(null);
+                  setServerSales(prev => prev.filter(s => s.id !== sale.id));
+                  try { await fetch(`${API_URL}/api/sales/${sale.id}/hard-delete`, { method: 'DELETE' }); } catch(e) {}
+                }}><Text style={styles.confirmBtnText}>Delete</Text></TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
       </View>
     );
   }
@@ -1081,16 +955,18 @@ function ReportsScreen({ setScreen }) {
   return null;
 }
 
-// ==================== INVENTORY SCREEN (with Add/Edit) ====================
+// ==================== INVENTORY SCREEN (with Add/Edit/Delete) ====================
 function InventoryScreen({ products, setProducts, setScreen, currentUser, loadProductsFromServer }) {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('All');
   const [showForm, setShowForm] = useState(false);
   const [editProduct, setEditProduct] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const [formName, setFormName] = useState('');
   const [formBrand, setFormBrand] = useState('');
   const [formCategory, setFormCategory] = useState('Makeup');
-  const [formPrice, setFormPrice] = useState('');
+  const [formRetailPrice, setFormRetailPrice] = useState('');
+  const [formWholesalePrice, setFormWholesalePrice] = useState('');
   const [formCost, setFormCost] = useState('');
   const [formQty, setFormQty] = useState('');
   const [formMinStock, setFormMinStock] = useState('5');
@@ -1107,70 +983,56 @@ function InventoryScreen({ products, setProducts, setScreen, currentUser, loadPr
   const openAddForm = () => {
     setEditProduct(null);
     setFormName(''); setFormBrand(''); setFormCategory('Makeup');
-    setFormPrice(''); setFormCost(''); setFormQty(''); setFormMinStock('5');
+    setFormRetailPrice(''); setFormWholesalePrice('');
+    setFormCost(''); setFormQty(''); setFormMinStock('5');
     setShowForm(true);
   };
 
   const openEditForm = (product) => {
     setEditProduct(product);
     setFormName(product.name); setFormBrand(product.brand || '');
-    setFormCategory(product.category); setFormPrice(product.price.toString());
-    setFormCost(product.cost_price ? product.cost_price.toString() : '');
-    setFormQty(product.quantity.toString()); setFormMinStock(product.min_stock_level.toString());
+    setFormCategory(product.category);
+    setFormRetailPrice((product.retail_price || product.price || 0).toString());
+    setFormWholesalePrice((product.wholesale_price || 0).toString());
+    setFormCost((product.cost_price || 0).toString());
+    setFormQty((product.quantity || 0).toString());
+    setFormMinStock((product.min_stock_level || 5).toString());
     setShowForm(true);
   };
 
   const saveProduct = async () => {
-    if (!formName || !formPrice) { Alert.alert('Error', 'Name and price are required'); return; }
+    if (!formName || !formRetailPrice) { Alert.alert('Error', 'Name and retail price are required'); return; }
     
     const productData = {
-      name: formName,
-      brand: formBrand,
-      category: formCategory,
-      price: parseFloat(formPrice),
+      name: formName, brand: formBrand, category: formCategory,
+      retail_price: parseFloat(formRetailPrice) || 0,
+      wholesale_price: parseFloat(formWholesalePrice) || 0,
       cost_price: parseFloat(formCost) || 0,
       quantity: parseInt(formQty) || 0,
       min_stock_level: parseInt(formMinStock) || 5,
     };
 
     try {
+      let result;
       if (editProduct) {
-        // Update on server
-        await fetch(`${API_URL}/api/products/${editProduct.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(productData),
+        result = await fetch(`${API_URL}/api/products/${editProduct.id}`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(productData),
         });
       } else {
-        // Add to server
-        await fetch(`${API_URL}/api/products`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(productData),
+        result = await fetch(`${API_URL}/api/products`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(productData),
         });
       }
-      
-      // Reload from server to get the server-assigned ID
-      if (loadProductsFromServer) {
+      if (result.ok) {
         await loadProductsFromServer();
+        setShowForm(false);
+        Alert.alert('Success', editProduct ? 'Product updated!' : 'Product added!');
+      } else {
+        Alert.alert('Error', 'Failed to save to server');
       }
-      
-      setShowForm(false);
-      Alert.alert('Success', editProduct ? 'Product updated!' : 'Product added!');
     } catch (error) {
-      console.error('Save failed:', error);
-      Alert.alert('Error', 'Failed to save product. Is the server running?');
+      Alert.alert('Error', 'Cannot reach server');
     }
-  };
-
-  const deleteProduct = (product) => {
-    Alert.alert('Delete', `Delete "${product.name}"?`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => {
-        setProducts(prev => prev.filter(p => p.id !== product.id));
-        Alert.alert('Deleted', 'Product removed');
-      }}
-    ]);
   };
 
   return (
@@ -1195,17 +1057,25 @@ function InventoryScreen({ products, setProducts, setScreen, currentUser, loadPr
         data={filtered}
         keyExtractor={item => item.id}
         renderItem={({ item }) => (
-          <TouchableOpacity style={styles.invItem} onPress={() => canEdit && openEditForm(item)} onLongPress={() => canEdit && deleteProduct(item)}>
-            <View style={{flex:1}}>
-              <Text style={styles.invName}>{item.name}</Text>
-              <Text style={styles.invBrand}>{item.brand} | {item.category}</Text>
-              <Text style={styles.invPrice}>KES {item.price.toLocaleString()}</Text>
-            </View>
-            <View style={{alignItems:'center'}}>
-              <Text style={[styles.invStock,{color:item.quantity>10?COLORS.success:item.quantity>0?COLORS.warning:COLORS.error}]}>{item.quantity}</Text>
-              <Text style={styles.invStockLabel}>stock</Text>
-            </View>
-          </TouchableOpacity>
+          <View style={styles.invItem}>
+            <TouchableOpacity style={{flex:1, flexDirection:'row'}} onPress={() => canEdit && openEditForm(item)}>
+              <View style={{flex:1}}>
+                <Text style={styles.invName}>{item.name}</Text>
+                <Text style={styles.invBrand}>{item.brand} | {item.category}</Text>
+                <Text style={styles.invPrice}>KES {(item.retail_price || item.price || 0).toLocaleString()}</Text>
+              </View>
+              <View style={{alignItems:'center', justifyContent:'center'}}>
+                <Text style={[styles.invStock,{color:item.quantity>10?COLORS.success:item.quantity>0?COLORS.warning:COLORS.error}]}>{item.quantity}</Text>
+                <Text style={styles.invStockLabel}>stock</Text>
+              </View>
+            </TouchableOpacity>
+            
+            {currentUser?.role === 'admin' && (
+              <TouchableOpacity style={{padding:8, justifyContent:'center'}} onPress={() => setDeleteTarget(item)}>
+                <Text style={{color: COLORS.error, fontSize: 18}}>🗑️</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         )}
       />
 
@@ -1214,34 +1084,28 @@ function InventoryScreen({ products, setProducts, setScreen, currentUser, loadPr
         <View style={styles.modalOverlay}>
           <ScrollView style={styles.modalContentLarge}>
             <Text style={styles.modalTitle}>{editProduct ? 'Edit Product' : 'Add New Product'}</Text>
-            
             <Text style={styles.fieldLabel}>Product Name *</Text>
             <TextInput style={styles.input} value={formName} onChangeText={setFormName} placeholder="e.g. Matte Lipstick" />
-            
             <Text style={styles.fieldLabel}>Brand</Text>
             <TextInput style={styles.input} value={formBrand} onChangeText={setFormBrand} placeholder="e.g. MAC" />
-            
             <Text style={styles.fieldLabel}>Category</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              {['Makeup','Skincare','Hair Care','Nails','Fragrances','Bath & Body','Tools'].map(c => (
+              {['Makeup','Skincare','Hair Care','Earings & Accessories','Manicure & Pedicure','Fragrances','Bath & Body','Lip Therapy','Barber','Tools'].map(c => (
                 <TouchableOpacity key={c} style={[styles.catBtn, formCategory===c&&styles.catBtnActive]} onPress={()=>setFormCategory(c)}>
                   <Text style={[styles.catText, formCategory===c&&styles.catTextActive]}>{c}</Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
-            
-            <Text style={styles.fieldLabel}>Selling Price *</Text>
-            <TextInput style={styles.input} value={formPrice} onChangeText={setFormPrice} keyboardType="decimal-pad" placeholder="0.00" />
-            
+            <Text style={styles.fieldLabel}>Retail Price *</Text>
+            <TextInput style={styles.input} value={formRetailPrice} onChangeText={setFormRetailPrice} keyboardType="decimal-pad" placeholder="0.00" />
+            <Text style={styles.fieldLabel}>Wholesale Price</Text>
+            <TextInput style={styles.input} value={formWholesalePrice} onChangeText={setFormWholesalePrice} keyboardType="decimal-pad" placeholder="0.00" />
             <Text style={styles.fieldLabel}>Cost Price</Text>
             <TextInput style={styles.input} value={formCost} onChangeText={setFormCost} keyboardType="decimal-pad" placeholder="0.00" />
-            
             <Text style={styles.fieldLabel}>Initial Stock</Text>
             <TextInput style={styles.input} value={formQty} onChangeText={setFormQty} keyboardType="numeric" placeholder="0" />
-            
             <Text style={styles.fieldLabel}>Min Stock Alert</Text>
             <TextInput style={styles.input} value={formMinStock} onChangeText={setFormMinStock} keyboardType="numeric" placeholder="5" />
-            
             <View style={styles.modalBtns}>
               <TouchableOpacity style={styles.cancelBtn} onPress={()=>setShowForm(false)}><Text>Cancel</Text></TouchableOpacity>
               <TouchableOpacity style={styles.confirmBtn} onPress={saveProduct}>
@@ -1249,6 +1113,41 @@ function InventoryScreen({ products, setProducts, setScreen, currentUser, loadPr
               </TouchableOpacity>
             </View>
           </ScrollView>
+        </View>
+      </Modal>
+
+      {/* Delete Confirmation Modal */}
+      <Modal visible={deleteTarget !== null} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Delete Product</Text>
+            <Text style={{textAlign:'center', marginBottom:15, color:COLORS.text, fontSize:16}}>
+              {deleteTarget?.name}
+            </Text>
+            <Text style={{textAlign:'center', color:COLORS.error, marginBottom:15, fontSize:14}}>
+              This cannot be undone!
+            </Text>
+            <View style={styles.modalBtns}>
+              <TouchableOpacity style={styles.cancelBtn} onPress={() => setDeleteTarget(null)}>
+                <Text>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.confirmBtn, {backgroundColor: COLORS.error}]} onPress={async () => {
+                const product = deleteTarget;
+                setDeleteTarget(null);
+                try {
+                  const response = await fetch(`${API_URL}/api/products/${product.id}/hard-delete`, { method: 'DELETE' });
+                  if (response.ok) {
+                    setProducts(prev => prev.filter(p => p.id !== product.id));
+                    Alert.alert('Deleted', 'Product removed from server.');
+                  }
+                } catch(e) {
+                  Alert.alert('Error', 'Failed to delete');
+                }
+              }}>
+                <Text style={styles.confirmBtnText}>Delete</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         </View>
       </Modal>
     </View>
@@ -1310,6 +1209,11 @@ function SettingsScreen({ setScreen }) {
             </View>
           </View>
         )}
+        <TouchableOpacity style={[styles.loginBtn, {backgroundColor: '#2196F3', marginTop: 15}]} onPress={() => {
+          Alert.alert('Backup', 'To backup your data:\n\n1. All data is automatically stored on the cloud server\n2. Export reports as PDF from the Reports screen\n3. Screenshot important records\n\nYour data is safe on the server.');
+        }}>
+          <Text style={styles.loginBtnText}>💾 Backup Information</Text>
+        </TouchableOpacity>
       </ScrollView>
     </View>
   );
@@ -1318,14 +1222,13 @@ function SettingsScreen({ setScreen }) {
 // ==================== USERS SCREEN (Full Management) ====================
 function UsersScreen({ setScreen, currentUser }) {
   const [users, setUsers] = useState([
-    { id: '1', username: 'admin', full_name: 'Admin User', role: 'admin', phone: '0700000000', is_active: true, created_at: '2024-01-01' },
-    { id: '2', username: 'cashier1', full_name: 'Jane Doe', role: 'cashier', phone: '0712345678', is_active: true, created_at: '2024-02-15' },
-    { id: '3', username: 'manager1', full_name: 'John Smith', role: 'manager', phone: '0723456789', is_active: true, created_at: '2024-03-01' },
+    { id: '1', username: 'admin', full_name: 'Administrator', role: 'admin', phone: '0700000000', is_active: true, created_at: '2024-01-01' }
   ]);
   const [showForm, setShowForm] = useState(false);
   const [editUser, setEditUser] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
   const [passwordUser, setPasswordUser] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   
@@ -1360,17 +1263,14 @@ function UsersScreen({ setScreen, currentUser }) {
       Alert.alert('Error', 'Username and full name are required');
       return;
     }
-
     if (!editUser && !formPassword) {
       Alert.alert('Error', 'Password is required for new users');
       return;
     }
-
     if (formPassword && formPassword.length < 4) {
       Alert.alert('Error', 'Password must be at least 4 characters');
       return;
     }
-
     if (formPin && formPin.length !== 4) {
       Alert.alert('Error', 'PIN must be exactly 4 digits');
       return;
@@ -1380,19 +1280,16 @@ function UsersScreen({ setScreen, currentUser }) {
       setUsers(prev => prev.map(u => u.id === editUser.id ? {
         ...u, full_name: formFullName, role: formRole, phone: formPhone
       } : u));
-      Alert.alert('Success', 'User updated successfully!');
+      Alert.alert('Success', 'User updated!');
     } else {
       const newUser = {
         id: Date.now().toString(),
-        username: formUsername,
-        full_name: formFullName,
-        role: formRole,
-        phone: formPhone,
-        is_active: true,
-        created_at: new Date().toISOString().split('T')[0],
+        username: formUsername, full_name: formFullName,
+        role: formRole, phone: formPhone,
+        is_active: true, created_at: new Date().toISOString().split('T')[0],
       };
       setUsers(prev => [...prev, newUser]);
-      Alert.alert('Success', `User "${formUsername}" created successfully!`);
+      Alert.alert('Success', `User "${formUsername}" created!`);
     }
     setShowForm(false);
   };
@@ -1402,7 +1299,6 @@ function UsersScreen({ setScreen, currentUser }) {
       Alert.alert('Error', 'You cannot deactivate your own account!');
       return;
     }
-
     const action = user.is_active ? 'deactivate' : 'activate';
     Alert.alert(
       `${action.charAt(0).toUpperCase() + action.slice(1)} User`,
@@ -1425,18 +1321,9 @@ function UsersScreen({ setScreen, currentUser }) {
   };
 
   const handleChangePassword = () => {
-    if (!newPassword) {
-      Alert.alert('Error', 'Enter new password');
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      Alert.alert('Error', 'Passwords do not match');
-      return;
-    }
-    if (newPassword.length < 4) {
-      Alert.alert('Error', 'Password must be at least 4 characters');
-      return;
-    }
+    if (!newPassword) { Alert.alert('Error', 'Enter new password'); return; }
+    if (newPassword !== confirmPassword) { Alert.alert('Error', 'Passwords do not match'); return; }
+    if (newPassword.length < 4) { Alert.alert('Error', 'Password must be at least 4 characters'); return; }
     Alert.alert('Success', `Password changed for ${passwordUser.full_name}!`);
     setShowPassword(false);
     setPasswordUser(null);
@@ -1454,45 +1341,39 @@ function UsersScreen({ setScreen, currentUser }) {
         data={users}
         keyExtractor={item => item.id}
         contentContainerStyle={{padding:15}}
+        ListEmptyComponent={<View style={styles.emptyCart}><Text style={styles.emptyText}>No users found</Text></View>}
         renderItem={({ item }) => (
-          <TouchableOpacity 
-            style={[styles.userCard, !item.is_active && styles.userCardInactive]} 
-            onPress={() => openEditForm(item)}
-            onLongPress={() => toggleUserStatus(item)}
-          >
-            <View style={styles.userAvatar}>
-              <Text style={styles.userAvatarText}>{item.full_name.charAt(0).toUpperCase()}</Text>
-            </View>
-            <View style={{flex:1, marginLeft:12}}>
-              <View style={{flexDirection:'row', justifyContent:'space-between', alignItems:'center'}}>
-                <Text style={styles.userName}>{item.full_name}</Text>
-                <View style={[styles.roleBadge, {
-                  backgroundColor: item.role === 'admin' ? COLORS.primary : 
-                                   item.role === 'manager' ? COLORS.warning : '#2196F3'
-                }]}>
-                  <Text style={styles.roleBadgeText}>{item.role}</Text>
-                </View>
+          <View style={[styles.userCard, !item.is_active && styles.userCardInactive]}>
+            <TouchableOpacity style={{flexDirection:'row', flex:1, alignItems:'center'}} onPress={() => openEditForm(item)} onLongPress={() => toggleUserStatus(item)}>
+              <View style={styles.userAvatar}>
+                <Text style={styles.userAvatarText}>{item.full_name.charAt(0).toUpperCase()}</Text>
               </View>
-              <Text style={styles.userDetail}>@{item.username}</Text>
-              <Text style={styles.userDetail}>{item.phone}</Text>
-              <View style={{flexDirection:'row', justifyContent:'space-between', marginTop:4}}>
+              <View style={{flex:1, marginLeft:12}}>
+                <View style={{flexDirection:'row', justifyContent:'space-between', alignItems:'center'}}>
+                  <Text style={styles.userName}>{item.full_name}</Text>
+                  <View style={[styles.roleBadge, {backgroundColor: item.role === 'admin' ? COLORS.primary : item.role === 'manager' ? COLORS.warning : '#2196F3'}]}>
+                    <Text style={styles.roleBadgeText}>{item.role}</Text>
+                  </View>
+                </View>
+                <Text style={styles.userDetail}>@{item.username}</Text>
+                <Text style={styles.userDetail}>{item.phone}</Text>
                 <Text style={[styles.userStatus, {color: item.is_active ? COLORS.success : COLORS.error}]}>
                   {item.is_active ? '● Active' : '● Inactive'}
                 </Text>
-                <Text style={styles.userDate}>Since {item.created_at}</Text>
               </View>
-            </View>
-            <TouchableOpacity 
-              style={styles.passwordBtn} 
-              onPress={() => openChangePassword(item)}
-            >
-              <Text style={styles.passwordBtnText}>🔑</Text>
             </TouchableOpacity>
-          </TouchableOpacity>
+            
+            {/* Action Buttons */}
+            <View style={{flexDirection:'column', gap:4, marginLeft:5}}>
+              <TouchableOpacity style={[styles.userActionBtn, {backgroundColor: COLORS.error}]} onPress={() => setDeleteTarget(item)}>
+                <Text style={styles.userActionText}>🗑️</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.userActionBtn, {backgroundColor: '#2196F3'}]} onPress={() => openChangePassword(item)}>
+                <Text style={styles.userActionText}>🔑</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         )}
-        ListEmptyComponent={
-          <View style={styles.emptyCart}><Text style={styles.emptyText}>No users found</Text></View>
-        }
       />
 
       {/* Add/Edit User Modal */}
@@ -1500,52 +1381,26 @@ function UsersScreen({ setScreen, currentUser }) {
         <View style={styles.modalOverlay}>
           <ScrollView style={styles.modalContentLarge}>
             <Text style={styles.modalTitle}>{editUser ? 'Edit User' : 'Add New User'}</Text>
-            
             <Text style={styles.fieldLabel}>Username *</Text>
-            <TextInput 
-              style={[styles.input, editUser && {backgroundColor: COLORS.background}]} 
-              value={formUsername} 
-              onChangeText={setFormUsername} 
-              placeholder="Username"
-              editable={!editUser}
-            />
-            
+            <TextInput style={[styles.input, editUser && {backgroundColor: COLORS.background}]} value={formUsername} onChangeText={setFormUsername} placeholder="Username" editable={!editUser} />
             <Text style={styles.fieldLabel}>Full Name *</Text>
             <TextInput style={styles.input} value={formFullName} onChangeText={setFormFullName} placeholder="Full name" />
-            
-            {!editUser && (
-              <>
-                <Text style={styles.fieldLabel}>Password *</Text>
-                <TextInput style={styles.input} value={formPassword} onChangeText={setFormPassword} placeholder="Password" secureTextEntry />
-              </>
-            )}
-            
+            {!editUser && (<><Text style={styles.fieldLabel}>Password *</Text><TextInput style={styles.input} value={formPassword} onChangeText={setFormPassword} placeholder="Password" secureTextEntry /></>)}
             <Text style={styles.fieldLabel}>PIN (optional)</Text>
             <TextInput style={styles.input} value={formPin} onChangeText={t=>setFormPin(t.replace(/[^0-9]/g,'').slice(0,4))} placeholder="4-digit PIN" keyboardType="numeric" maxLength={4} secureTextEntry />
-            
             <Text style={styles.fieldLabel}>Role</Text>
             <View style={{flexDirection:'row', gap:10, marginBottom:15}}>
               {['admin', 'manager', 'cashier'].map(role => (
-                <TouchableOpacity 
-                  key={role}
-                  style={[styles.roleOption, formRole===role && styles.roleOptionActive]} 
-                  onPress={()=>setFormRole(role)}
-                >
-                  <Text style={[styles.roleOptionText, formRole===role&&styles.roleOptionTextActive]}>
-                    {role.charAt(0).toUpperCase() + role.slice(1)}
-                  </Text>
+                <TouchableOpacity key={role} style={[styles.roleOption, formRole===role && styles.roleOptionActive]} onPress={()=>setFormRole(role)}>
+                  <Text style={[styles.roleOptionText, formRole===role&&styles.roleOptionTextActive]}>{role.charAt(0).toUpperCase() + role.slice(1)}</Text>
                 </TouchableOpacity>
               ))}
             </View>
-            
             <Text style={styles.fieldLabel}>Phone</Text>
             <TextInput style={styles.input} value={formPhone} onChangeText={setFormPhone} placeholder="Phone number" keyboardType="phone-pad" />
-            
             <View style={styles.modalBtns}>
               <TouchableOpacity style={styles.cancelBtn} onPress={()=>setShowForm(false)}><Text>Cancel</Text></TouchableOpacity>
-              <TouchableOpacity style={styles.confirmBtn} onPress={saveUser}>
-                <Text style={styles.confirmBtnText}>{editUser ? 'Update' : 'Create User'}</Text>
-              </TouchableOpacity>
+              <TouchableOpacity style={styles.confirmBtn} onPress={saveUser}><Text style={styles.confirmBtnText}>{editUser ? 'Update' : 'Create User'}</Text></TouchableOpacity>
             </View>
           </ScrollView>
         </View>
@@ -1556,20 +1411,254 @@ function UsersScreen({ setScreen, currentUser }) {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Change Password</Text>
-            <Text style={{textAlign:'center', color:COLORS.textLight, marginBottom:15}}>
-              For: {passwordUser?.full_name} (@{passwordUser?.username})
-            </Text>
-            
+            <Text style={{textAlign:'center', color:COLORS.textLight, marginBottom:15}}>For: {passwordUser?.full_name} (@{passwordUser?.username})</Text>
             <Text style={styles.fieldLabel}>New Password</Text>
             <TextInput style={styles.input} value={newPassword} onChangeText={setNewPassword} placeholder="Enter new password" secureTextEntry />
-            
             <Text style={styles.fieldLabel}>Confirm Password</Text>
             <TextInput style={styles.input} value={confirmPassword} onChangeText={setConfirmPassword} placeholder="Confirm password" secureTextEntry />
-            
             <View style={styles.modalBtns}>
               <TouchableOpacity style={styles.cancelBtn} onPress={()=>{setShowPassword(false); setPasswordUser(null);}}><Text>Cancel</Text></TouchableOpacity>
-              <TouchableOpacity style={[styles.confirmBtn, {backgroundColor:'#2196F3'}]} onPress={handleChangePassword}>
-                <Text style={styles.confirmBtnText}>Change Password</Text>
+              <TouchableOpacity style={[styles.confirmBtn, {backgroundColor:'#2196F3'}]} onPress={handleChangePassword}><Text style={styles.confirmBtnText}>Change Password</Text></TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Delete User Confirmation Modal */}
+      <Modal visible={deleteTarget !== null} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Delete User</Text>
+            <Text style={{textAlign:'center', marginBottom:5, color:COLORS.text, fontSize:16}}>{deleteTarget?.full_name}</Text>
+            <Text style={{textAlign:'center', color:COLORS.textLight, marginBottom:5}}>@{deleteTarget?.username} | {deleteTarget?.role}</Text>
+            <Text style={{textAlign:'center', color:COLORS.error, marginBottom:15, fontSize:14}}>This cannot be undone!</Text>
+            <View style={styles.modalBtns}>
+              <TouchableOpacity style={styles.cancelBtn} onPress={() => setDeleteTarget(null)}><Text>Cancel</Text></TouchableOpacity>
+              <TouchableOpacity style={[styles.confirmBtn, {backgroundColor: COLORS.error}]} onPress={async () => {
+                const user = deleteTarget;
+                setDeleteTarget(null);
+                try {
+                  const response = await fetch(`${API_URL}/api/users/${user.id}/hard-delete`, { method: 'DELETE' });
+                  if (response.ok) {
+                    setUsers(prev => prev.filter(u => u.id !== user.id));
+                    Alert.alert('Deleted', 'User has been permanently deleted.');
+                  } else {
+                    Alert.alert('Error', 'Failed to delete user from server');
+                  }
+                } catch(e) {
+                  Alert.alert('Error', 'Cannot reach server');
+                }
+              }}>
+                <Text style={styles.confirmBtnText}>Delete</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
+// ==================== CREDITS SCREEN ====================
+function CreditsScreen({ setScreen }) {
+  const [credits, setCredits] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [showPayModal, setShowPayModal] = useState(false);
+  const [selectedCredit, setSelectedCredit] = useState(null);
+  const [payAmount, setPayAmount] = useState('');
+  const [payPhone, setPayPhone] = useState('');
+  const [payMethod, setPayMethod] = useState('cash');
+
+  const fetchCredits = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_URL}/api/credits`);
+      if (response.ok) {
+        const data = await response.json();
+        setCredits(data);
+      }
+    } catch (error) {
+      console.log('Failed to load credits:', error.message);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    fetchCredits();
+  }, []);
+
+  const openPayModal = (credit) => {
+    setSelectedCredit(credit);
+    setPayAmount(credit.total_amount?.toString() || '0');
+    setPayPhone('');
+    setPayMethod('cash');
+    setShowPayModal(true);
+  };
+
+  const submitPayment = async () => {
+    if (!selectedCredit) return;
+    
+    const amount = parseFloat(payAmount) || 0;
+    const total = selectedCredit.total_amount || 0;
+    
+    if (payMethod === 'cash' && amount < total) {
+      Alert.alert('Error', `Amount must be at least KES ${total.toLocaleString()}`);
+      return;
+    }
+    
+    if (payMethod === 'mpesa' && (!payPhone || payPhone.length < 10)) {
+      Alert.alert('Error', 'Please enter a valid phone number');
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_URL}/api/sales/${selectedCredit.id}/pay-credit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          payment_method: payMethod,
+          amount: total,
+          cash_tendered: payMethod === 'cash' ? amount : total,
+          change_amount: payMethod === 'cash' ? amount - total : 0,
+          customer_phone: payPhone,
+        }),
+      });
+      
+      if (response.ok) {
+        fetchCredits();
+        setShowPayModal(false);
+        setSelectedCredit(null);
+        Alert.alert('Success', `Credit paid via ${payMethod === 'cash' ? 'Cash' : 'M-Pesa'}!`);
+      } else {
+        Alert.alert('Error', 'Failed to process payment');
+      }
+    } catch(e) {
+      Alert.alert('Error', 'Cannot reach server');
+    }
+  };
+
+  const deleteCredit = (credit) => {
+    Alert.alert(
+      'Delete Credit',
+      `Delete credit for ${credit.credit_customer_name}?\n\nThis cannot be undone!`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: async () => {
+          try {
+            await fetch(`${API_URL}/api/sales/${credit.id}/hard-delete`, { method: 'DELETE' });
+            fetchCredits();
+            Alert.alert('Deleted', 'Credit record removed.');
+          } catch(e) {
+            Alert.alert('Error', 'Failed to delete');
+          }
+        }}
+      ]
+    );
+  };
+
+  return (
+    <View style={styles.screenContainer}>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={()=>setScreen('shop')}><Text style={styles.backText}>← Back</Text></TouchableOpacity>
+        <Text style={styles.headerTitle}>Credits</Text>
+        <TouchableOpacity onPress={fetchCredits}><Text style={styles.cartIcon}>🔄</Text></TouchableOpacity>
+      </View>
+      
+      {credits.length === 0 ? (
+        <View style={styles.emptyCart}>
+          <Text style={styles.emptyEmoji}>📋</Text>
+          <Text style={styles.emptyText}>No pending credits</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={credits}
+          keyExtractor={item => item.id}
+          contentContainerStyle={{padding:15}}
+          renderItem={({ item }) => (
+            <View style={styles.creditCard}>
+              <View style={{flex:1}}>
+                <Text style={styles.creditName}>{item.credit_customer_name}</Text>
+                <Text style={styles.creditDetail}>Receipt: {item.receipt_number}</Text>
+                <Text style={styles.creditDetail}>Date: {(item.created_at || '').substring(0, 16)}</Text>
+                <Text style={styles.creditAmount}>KES {(item.total_amount || 0).toLocaleString()}</Text>
+                <Text style={[styles.creditType, {color: item.sale_type === 'wholesale' ? COLORS.warning : COLORS.primary}]}>
+                  {item.sale_type === 'wholesale' ? '🏪 Wholesale' : '🏬 Retail'}
+                </Text>
+              </View>
+              <View style={{gap:8}}>
+                <TouchableOpacity style={styles.creditPayBtn} onPress={() => openPayModal(item)}>
+                  <Text style={styles.creditPayText}>Pay</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.creditDelBtn} onPress={() => deleteCredit(item)}>
+                  <Text style={styles.creditDelText}>🗑️</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+        />
+      )}
+
+      {/* Pay Credit Modal */}
+      <Modal visible={showPayModal} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Pay Credit</Text>
+            <Text style={{textAlign:'center', color:COLORS.textLight, marginBottom:10}}>
+              Customer: {selectedCredit?.credit_customer_name}
+            </Text>
+            <Text style={styles.modalAmount}>
+              KES {(selectedCredit?.total_amount || 0).toLocaleString()}
+            </Text>
+            
+            {/* Payment Method Toggle */}
+            <View style={styles.saleTypeRow}>
+              <TouchableOpacity 
+                style={[styles.saleTypeBtn, payMethod==='cash'&&styles.saleTypeActive]} 
+                onPress={()=>setPayMethod('cash')}>
+                <Text style={[styles.saleTypeText, payMethod==='cash'&&styles.saleTypeTextActive]}>💵 Cash</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.saleTypeBtn, payMethod==='mpesa'&&styles.saleTypeActive]} 
+                onPress={()=>setPayMethod('mpesa')}>
+                <Text style={[styles.saleTypeText, payMethod==='mpesa'&&styles.saleTypeTextActive]}>📱 M-Pesa</Text>
+              </TouchableOpacity>
+            </View>
+
+            {payMethod === 'cash' ? (
+              <>
+                <Text style={styles.fieldLabel}>Cash Amount</Text>
+                <TextInput 
+                  style={styles.input} 
+                  value={payAmount} 
+                  onChangeText={setPayAmount} 
+                  keyboardType="decimal-pad" 
+                  placeholder="Enter amount"
+                />
+                {parseFloat(payAmount) >= (selectedCredit?.total_amount || 0) && (
+                  <Text style={styles.changeText}>
+                    Change: KES {(parseFloat(payAmount) - (selectedCredit?.total_amount || 0)).toLocaleString()}
+                  </Text>
+                )}
+              </>
+            ) : (
+              <>
+                <Text style={styles.fieldLabel}>M-Pesa Phone Number</Text>
+                <TextInput 
+                  style={styles.input} 
+                  value={payPhone} 
+                  onChangeText={setPayPhone} 
+                  keyboardType="phone-pad" 
+                  placeholder="0712..."
+                />
+              </>
+            )}
+            
+            <View style={styles.modalBtns}>
+              <TouchableOpacity style={styles.cancelBtn} onPress={()=>{setShowPayModal(false);setSelectedCredit(null);}}>
+                <Text>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.confirmBtn, {backgroundColor: COLORS.success}]} onPress={submitPayment}>
+                <Text style={styles.confirmBtnText}>Confirm Payment</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1662,9 +1751,34 @@ const styles = StyleSheet.create({
   confirmBtnText: { color: COLORS.textWhite, fontWeight: 'bold' },
   
   // Bottom Nav
-  bottomNav: { flexDirection: 'row', backgroundColor: COLORS.surface, paddingVertical: 10, borderTopWidth: 1, borderTopColor: COLORS.border, flexWrap: 'wrap' },
-  navBtn: { flex: 1, alignItems: 'center', paddingVertical: 5, minWidth: 80 },
-  navText: { fontSize: 13, fontWeight: '600', color: COLORS.text },
+    bottomNav: { 
+    backgroundColor: COLORS.surface, 
+    paddingTop: 8,
+    paddingBottom: 25,  // Extra padding for phone navigation buttons
+    borderTopWidth: 1, 
+    borderTopColor: COLORS.border,
+  },
+  bottomNavScroll: { 
+    flexDirection: 'row', 
+    paddingHorizontal: 5, 
+    alignItems: 'center',
+    justifyContent: 'space-around',
+  },
+  navBtn: { 
+    paddingHorizontal: 8, 
+    paddingVertical: 4,
+    alignItems: 'center',
+    minWidth: 55,
+  },
+  navText: { 
+    fontSize: 18, 
+  },
+  navLabel: {
+    fontSize: 10,
+    color: COLORS.text,
+    marginTop: 2,
+    fontWeight: '500',
+  },
   
   // Reports
   reportBtn: { backgroundColor: COLORS.surface, padding: 16, borderRadius: 12, marginBottom: 10, borderWidth: 1, borderColor: COLORS.border },
@@ -1684,6 +1798,13 @@ const styles = StyleSheet.create({
   reportCardTitle: { fontSize: 16, fontWeight: 'bold', color: COLORS.text, marginBottom: 4 },
   reportCardDesc: { fontSize: 13, color: COLORS.textLight, marginBottom: 8 },
   reportCardValue: { fontSize: 15, fontWeight: '600', color: COLORS.primary },
+
+
+  saleTypeRow: { flexDirection: 'row', marginBottom: 10, gap: 10 },
+  saleTypeBtn: { flex: 1, paddingVertical: 10, borderRadius: 20, alignItems: 'center', borderWidth: 2, borderColor: COLORS.border },
+  saleTypeActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  saleTypeText: { fontSize: 13, fontWeight: '600', color: COLORS.textLight },
+  saleTypeTextActive: { color: COLORS.textWhite },
 
   // Reports - Bar chart
   barContainer: { backgroundColor: COLORS.surface, padding: 15, borderRadius: 15, marginBottom: 15 },
@@ -1717,6 +1838,8 @@ const styles = StyleSheet.create({
   bottomNavScroll: { flexDirection: 'row', paddingHorizontal: 10, alignItems: 'center' },
   navBtn: { paddingHorizontal: 12, paddingVertical: 8 },
   navText: { fontSize: 13, fontWeight: '600', color: COLORS.text },
+
+  fieldLabel: { fontSize: 13, fontWeight: '600', color: COLORS.text, marginBottom: 5, marginTop: 10 },
 
 
     // Notification Modal
@@ -1784,6 +1907,17 @@ const styles = StyleSheet.create({
   waitingTimer: { fontSize: 12, color: COLORS.textLight, marginTop: 8 },
   progressBar: { width: '100%', height: 6, backgroundColor: COLORS.border, borderRadius: 3, marginTop: 10, overflow: 'hidden' },
   progressFill: { height: '100%', backgroundColor: '#4CAF50', borderRadius: 3 },
+
+    // Credits
+  creditCard: { flexDirection: 'row', backgroundColor: COLORS.surface, padding: 15, marginBottom: 10, borderRadius: 15, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center' },
+  creditName: { fontSize: 15, fontWeight: 'bold', color: COLORS.text },
+  creditDetail: { fontSize: 12, color: COLORS.textLight, marginTop: 2 },
+  creditAmount: { fontSize: 18, fontWeight: 'bold', color: COLORS.warning, marginTop: 5 },
+  creditType: { fontSize: 11, fontWeight: '600', marginTop: 3 },
+  creditPayBtn: { backgroundColor: COLORS.success, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 20 },
+  creditPayText: { color: COLORS.textWhite, fontWeight: 'bold', fontSize: 14 },
+  creditDelBtn: { padding: 8 },
+  creditDelText: { fontSize: 20 },
 
   // Settings
   fieldLabel: { fontSize: 13, fontWeight: '600', color: COLORS.text, marginBottom: 5, marginTop: 10 },
